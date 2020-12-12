@@ -1,0 +1,69 @@
+= Microservices
+
+In this chapter, you will decompose a (small) monolith running in Kubernetes into a set of microservices.
+
+IMPORTANT: Make sure your Docker is using the minikube Docker socket.
+Run 'eval $(minikube docker-env)' to configure Docker correctly.
+
+== The monolith
+
+In the `supes-monolith` directory, you have the code of a small monolithic application.
+This application uses a PostgreSQL database to store _heroes_ and _villains_.
+The application exposes a simple UI (`src/main/resources/META-INF/resources/index.html`).
+It _simulates_ fights between super-heroes and super-villains.
+
+All the code is located in a single module.
+Build the monolith using:
+
+[source, bash]
+----
+mvn package
+docker build -f src/main/docker/Dockerfile.jvm -t workshop/supes-monolith .
+----
+
+== Deploying the monolith
+
+As said above, the monolith uses a database.
+It is also configured using a config map (database URL) and a secret (database credentials).
+You can find all the descriptor in `supes-monolith/kubernetes`
+
+Deploy the monolith launching from the `super-monolith` directory:
+
+[source, bash]
+----
+kubectl apply -f kubernetes/
+----
+
+[NOTE]
+====
+The all-in-one update command is:
+[source, bash]
+----
+mvn package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/supes-monolith .; kubectl delete deployment supes-monolith; kubectl apply -f kubernetes/
+----
+====
+
+Once deployed, access the exposed UI:
+
+[source, bash]
+----
+$ minikube service supes-monolith --url
+http://192.168.49.2:32305
+$ open http://192.168.49.2:32305 # Open the url in a browser
+----
+
+== Exercise
+
+Restructure the monolith in a set of microservices:
+
+* hero microservice
+* villain microservice
+* fight microservice (includes the UI)
+
+The decomposition must follow this set of constraints:
+
+- All communications will use HTTP.
+- Microservices must not share a database.
+- All microservices must be monitored and have health checks
+- HTTP interactions must be protected against timeout and use fallback if needed. Retries can be used.
+- Only the _fight_ service should be accessible from the outside

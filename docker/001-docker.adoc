@@ -1,0 +1,337 @@
+= 001 - Docker and Containers
+
+_This workshop is a short introduction to Docker. It's a prerequisite to the Kubernetes workshop_.
+
+This workshop is a set of exercises to get you started and comfortable with Docker. 
+The exercises are written to help you learn what Docker does and how it is used to create, share, and deploy containers. 
+It does not cover any advanced features such as squashing or `docker-compose`.
+
+== Prerequisites
+
+Be sure you have docker or docker desktop installed.
+Follows the instructions from the https://docs.docker.com/get-docker/[Docker Website] to download, install, and checks your installation.
+
+== Running a container 
+
+A container is an isolated process, typically a Linux process: it doesn't see other processes, it has its networking stack, and it has its own filesystem.
+However, never forget it shares the resources from the host, especially CPU and memory.
+
+=== Containers are isolated
+
+On your computer, run the following four commands.
+
+[source, bash]
+----
+$ df
+$ pwd
+$ echo $HOSTNAME
+----
+
+Next, we're going to run a container using the Docker command-line tool.
+In particular, you're going to start a new shell inside a container running UBI (Universal Base Image), a Linux distribution tailored for containers.
+Once the new shell starts, type those four commands again:
+
+[source, bash]
+----
+$ docker run --interactive --tty registry.access.redhat.com/ubi8/ubi-minimal /bin/sh
+sh-4.4# df
+sh-4.4# pwd
+sh-4.4# echo $HOSTNAME
+sh-4.4# ps 
+sh-4.4# exit
+----
+
+Compare the output in your terminal to the output from the container, and you'll notice that inside the container, you have:
+
+1. Different mounted filesystems.
+2. The working directory is different
+3. The hostname is different
+4. Some utilities are not available
+
+[NOTE]
+====
+Look at the image url.
+`registry.access.redhat.com/ubi8/ubi-minimal` is the full url.
+`registry.access.redhat.com` is the registry.
+`ubi8/ubi-minimal` is the name of the image, with `ubi8` being the _namespace_.
+In this URL we omitted the label/tag. 
+It will pull the `latest` tag if not specified.
+====
+
+=== Containers start quickly
+
+In addition to being isolated, the container will also startup as quickly as a normal process.
+The first time you ran that command Docker needed to download the image, which can take some time.
+Now that you've got the image cached locally, try running another container:
+
+[source, bash]
+----
+$ docker run --interactive --tty registry.access.redhat.com/ubi8/ubi-minimal /bin/sh
+sh-4.4# echo hello world
+sh-4.4# exit
+----
+
+You'll notice this time it starts up just as fast as a normal process would.
+
+=== Each container has its own filesystem
+
+Start a container and write some data to a file.
+
+> `-it` is the shorthand for `--interactive --tty`:
+
+[source, bash]
+----
+$ docker run -it registry.access.redhat.com/ubi8/ubi-minimal /bin/sh
+sh-4.4# echo hello > /tmp/hello.txt
+sh-4.4# cat /tmp/hello.txt
+hello
+sh-4.4# exit
+----
+
+Now on your primary terminal, check if `/tmp/hello.txt` exists with the below command:
+
+[source, bash]
+----
+$ cat /tmp/hello.txt
+
+cat: /tmp/hello.txt: No such file or directory
+----
+
+Then start a new container, and check if `/tmp/hello.txt` exists. 
+It also should not exist:
+
+[source, bash]
+----
+$ docker run -it registry.access.redhat.com/ubi8/ubi-minimal /bin/sh
+sh-4.4# cat /tmp/hello.txt
+
+cat: /tmp/hello.txt: No such file or directory
+----
+
+As you have now witnessed, containers have unique isolated filesystems. 
+The host is not modified by what occurs in the container, and multiple runs of the same Container Image do not result in a shared filesystem.
+
+=== Exercises
+
+You can pass command-line arguments to the process the container runs:
+
+[source, bash]
+----
+$ docker run -it registry.access.redhat.com/ubi8/ubi-minimal echo hello world
+----
+
+Set environment variables:
+
+[source, bash]
+----
+$ docker run -i -t -e HELLO=world registry.access.redhat.com/ubi8/ubi-minimal /bin/sh
+sh-4.4# echo $HELLO
+----
+
+Mount a directory from your machine into the container:
+
+[source, bash]
+----
+$ docker run -i -t -v $PWD:/host registry.access.redhat.com/ubi8/ubi-minimal ls /host
+----
+
+You can look at the options described in the https://docs.docker.com/engine/reference/run/[Docker run documentation] to see more ways you can control the container.
+
+=== Takeaways
+
+* You can use `docker run` to run a container.
+* A container lets you quickly start an isolated Linux _process_ with its own filesystem and networking stack.
+* A container starts with a copy of the base filesystem: changes in one container don't affect other containers.
+
+Next, we'll talk about where this filesystem comes from and how you can create one.
+
+== Packaging an application in an image
+
+Whenever a new container is created, its filesystem is initialized from an *image*.
+In the previous section, you were using the `ubi` image, which contains all the files necessary to run.
+
+=== Browsing local images
+
+To see which images are available locally on your machine, run:
+
+[source, bash]
+----
+$ docker images
+----
+
+=== Where images come from
+
+When you ran `docker run registry.access.redhat.com/ubi8/ubi-minimal` Docker checked if the image was available locally.
+If it wasn't available locally, Docker downloads from a remote *image registry*.
+The default image registry is the [Docker Hub](https://hub.docker.com), which has many pre-existing images available.
+However, in our case, we download the image from another registry: `registry.access.redhat`.
+
+You can check https://catalog.redhat.com/software/containers/ubi8/ubi-minimal/5c359a62bed8bd75a2c3fba8[the image page] to have all the details you need on the content of that image (Security index, packages...).
+
+=== Tags: versioning images
+
+If you click on the "Tag" button, you'll see a list of tags and when they have been created.
+Each tag is a different version of the image.
+
+NOTE: unlike a source repository, image tags can be modified.
+
+When you do `docker run`, you can specify a particular version of the image to load.
+For example, here you download and then run version 8.3 of the `ubi-minimal` image:
+
+[source, bash]
+----
+$ docker run registry.access.redhat.com/ubi8/ubi-minimal:8.3 cat /etc/redhat-release
+----
+
+If you don't specify a tag then `latest` is used.
+Be aware that once pulled, it never checks if there is a _newer latest_.
+That means your locally cached `latest` may be different from the `latest` in the image registry.
+In general, do not use `latest`.
+
+=== Creating your own image
+
+You can create your own images, and almost always, you'll want to base your images on an existing one.
+Most Linux distributions provide base images on the Docker Hub so that you can use Ubuntu or CentOS as base images.
+We'll be building on the `registry.access.redhat.com/ubi8/ubi-minimal` image because it's been tailored for containers.
+
+In a new directory create a file called `HelloWorld.java` with the following contents:
+
+[source, java]
+----
+///usr/bin/env jbang "$0" "$@" ; exit $?
+
+import static java.lang.System.*;
+
+public class HelloWorld {
+
+    public static void main(String... args) {
+        out.println("Hello World");
+    }
+}
+----
+
+In the same directory, create a file called `Dockerfile` with the following contents:
+
+[source, dockerfile]
+----
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
+# Run a command inside the container as we build.
+# In this case, install java and jbang:
+# Notice how we chain commands to avoid creating multiple intermediate layers
+RUN microdnf install java-11-openjdk-devel unzip  \
+  && curl -Ls "https://github.com/jbangdev/jbang/releases/download/v0.53.2/jbang-0.53.2.zip" --output jbang.zip \
+  && unzip jbang.zip && rm jbang.zip && mv jbang-* jbang && chmod +x jbang/bin/jbang
+
+COPY HelloWorld.java /root
+
+# Set the default command to run when a new container is started with this image:
+ENTRYPOINT jbang/bin/jbang /root/HelloWorld.java
+----
+
+You can now build a new image, lets called it, very originally, `hello-world`:
+
+[source, bash]
+----
+$ docker build -t hello-world:1.0 .
+----
+
+This is going to take a bit of time, as it needs to install the JVM, JBang and so on.
+
+Once built, you should be able to see the image when you list images:
+
+[source, bash]
+----
+$ docker images | grep hello-world
+----
+
+You can now run new containers using this image:
+
+[source, bash]
+----
+$ docker run hello-world:1.0
+----
+
+=== Exercises
+
+1. Skim the documentation for the https://docs.docker.com/engine/reference/builder/[Dockerfile format]
+2. Try to package a Java application packaged as a _fat jar_ in a container.
+
+=== Takeaways
+
+* Images initialize the filesystem used by a container.
+* Images have different versions, addressable using tags.
+* Images can be built on top of other images.
+* Images can be stored locally or retrieved from a remote registry.
+* You can create images using a `Dockerfile` and `docker build`.
+
+IMPORTANT: The images created in this section are not production images. They are used as exercise.
+
+Next, we'll see how you can share your images with others by uploading them to the image registry.
+
+== Pushing images to a registry
+
+Now that you've created an image, it's time to share it with other people.
+
+=== Uploading Docker Hub
+
+First, sign up for a https://hub.docker.com/[Docker Hub account] or https://quay.io[Quay.io].
+
+
+In the last section, you tagged your image as `hello-world:1.0`.
+Most images in a registry come with a prefix: the name of the user or organization that created them. 
+If you signed up as `clement`, your images will be tagged as `clement/<image-name>`.
+
+Rebuild your image with a new tag; don't forget to substitute your Docker Hub username for `clement`:
+
+[source, bash]
+----
+$ docker build -t clement/hello-world:1.0 .
+----
+
+Now you can upload the image to the registry:
+
+[source, bash]
+----
+$ docker push clement/hello-world:1.0
+----
+
+Next, to see that it worked, delete the image from your local cache:
+
+[source, bash]
+----
+$ docker rmi clement/hello-world:1.0
+----
+
+It should no longer be listed in the local list of images:
+
+[source, bash]
+----
+$ docker images | grep hello-world
+----
+
+The image should be retrieved from the registry when you run it:
+
+[source, bash]
+----
+$ docker run clement/hello-world:1.0
+----
+
+=== Exercises
+
+In the tutorial above, you used the Docker Hub registry, so everything you upload is public.
+Typically, you'll use a registry running in your own environment for performance and have some access control on your images.
+Read up on how to run a registry in your own environment:
+
+* [AWS Container Registry](https://aws.amazon.com/ecr/).
+* [Google Container Registry](https://cloud.google.com/container-registry/)
+* [Azure Container Registry](https://azure.microsoft.com/en-us/services/container-registry/)
+* [Docker's self-hosted registry](https://docs.docker.com/registry/)
+* [Quay's registry, available on-premise or as a service](https://quay.io/)
+
+NOTE: Remember: even though many are called a "Container Registry", they store *images*.
+
+=== Takeaways
+
+* You can upload images to a registry, allowing you to share images with others.
+* Your organization will need a registry for its own images.
+* Kubernetes provides its own internal registry, but it may not be reachable

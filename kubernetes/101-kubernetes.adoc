@@ -1,0 +1,169 @@
+= 101 - Kubernetes - a concise introduction
+
+_This workshop is a short introduction to Kubernetes_.
+
+This workshop is a set of exercises to get you started with Kubernetes. 
+Kubernetes landscape is enormous; that workshop is just a _getting started_.
+
+== Getting a cluster
+
+There are multiple ways to run a Kubernetes cluster.
+The most straightforward approach, at the time of writing, is to use Minikube. 
+Minikube is a complete Kubernetes cluster in a box. 
+The single-node cluster runs in a virtual machine right on your computer, running the same software as a usual Kubernetes cluster.
+
+Follows the instructions from https://minikube.sigs.k8s.io/docs/start/[the Minikube starting guide] to install Minikube on your machine.
+
+=== Starting Minikube 
+
+On your computer, run the following command to start the Minikube.
+
+[source, bash]
+----
+$ minikube start
+----
+
+It takes about a minute for the VM to boot, but Minikube should display some text on the console once running.
+The significant bits are the last line, `kubectl is now configured to use "minikube" cluster and "default" namespace by default`, which indicates that Minikube is ready to use.
+
+[source, bash]
+----
+😄  minikube v1.15.1 on Darwin 10.15.7
+✨  Automatically selected the docker driver. Other choices: hyperkit, virtualbox
+👍  Starting control plane node minikube in cluster minikube
+🚜  Pulling base image ...
+💾  Downloading Kubernetes v1.19.4 preload ...
+🐳  Preparing Kubernetes v1.19.4 on Docker 19.03.13 ...
+🔎  Verifying Kubernetes components...
+🌟  Enabled addons: storage-provisioner, default-storageclass
+🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
+----
+
+Next, you're going to run a `kubectl` command that queries the cluster for information such as the URL of the Kubernetes _master_.
+Type `kubectl cluster-info` into the command line.
+
+[source, bash]
+----
+$ kubectl cluster-info
+Kubernetes master is running at https://127.0.0.1:32772
+----
+
+The `kubectl cluster-info` command is excellent for querying available endpoints of any Kubernetes cluster, which can be numerous on a more advanced cluster.
+
+TIP: To further debug and diagnose cluster problems, use `kubectl cluster-info dump`.
+
+=== Stopping Minikube
+
+To stop the Minikube, run `minikube stop`, and the VM hosting Minikube will be shutdown.
+The great thing about `minikube stop` is you can resume whatever you were working on previously.
+
+=== Deleting Minikube
+
+Sometimes you want a fresh slate to work on. 
+You can do this with `minikube delete`, which destroys the underlying VM.
+
+=== Accessing the Minikube Docker daemon
+
+You do not have access to Minikube's Docker daemon from your command line under normal conditions because Minikube is an isolated virtual machine.
+
+However, it is useful to use the Minikube Docker daemon directly (especially when building Docker images) because you can then run them right on the Kubernetes cluster without an intermediate step that pushes the Docker image to an external Docker Registry.
+
+Open two terminals, and in the first one, run the below command:
+
+[source, bash]
+----
+$ docker ps
+----
+
+In the other terminal run:
+
+[source, bash]
+----
+$ eval $(minikube docker-env)
+$ docker ps
+----
+
+In the second terminal, you have access to the Docker daemon within the VM.
+As you can notice, many containers are running: these are forming the backbone of Kubernetes.
+
+=== Accessing the VM
+
+You can get a shell prompt inside the VM by running the following:
+
+[source, bash]
+----
+$ minikube ssh
+----
+
+Try running `ps xa` to see what's running inside it.
+
+=== Takeaway
+
+1. You can use Minikube to run a local Kubernetes cluster.
+2. You can access Minikube's Docker server using `minikube docker-env`.
+3. You can access the Minikube VM using `minikube ssh`.
+
+== Running a Container
+
+Kubernetes is all about running containers. 
+In this section, you will learn how to run a straightforward container that gives you access to a command interface (shell) on the Kubernetes cluster, which is useful for understanding some Kubernetes basics.
+
+=== Running an interactive console terminal on the cluster
+
+On your computer, run the following command using the `kubectl` command-line tool. In particular, you're going to start a new shell inside a container running `registry.access.redhat.com/ubi8/ubi-minimal` just like you did in the earlier Docker workshop.
+
+[source, bash]
+----
+$ kubectl run my-shell --rm -it --image registry.access.redhat.com/ubi8/ubi-minimal -- /bin/sh
+
+sh-4.4# df
+sh-4.4# pwd
+sh-4.4# echo $HOSTNAME
+----
+
+In another terminal, run a nearly identical command.
+
+[source, bash]
+----
+$ kubectl run my-other-shell --rm -it --image registry.access.redhat.com/ubi8/ubi-minimal -- /bin/sh
+
+sh-4.4# df
+sh-4.4# pwd
+sh-4.4# echo $HOSTNAME
+----
+
+Compare the output from the container in the first terminal to the output from the container in the second terminal, and you will notice that inside the container, you have:
+
+1. Different mounted filesystems.
+2. A different hostname.
+
+To exit the container, you run the `exit` command:
+
+[source, bash]
+----
+sh-4.4# exit
+Session ended, resume using 'kubectl attach my-shell -c my-shell -i -t' command when the pod is running
+----
+
+=== Exercises
+
+You can run different operating systems (do not forget that it takes a while to pull the image the first time from a remote Docker Registry). 
+
+[source, bash]
+----
+$ kubectl run my-os --rm -it --image ubuntu -- /bin/bash
+----
+
+Set some environment variables:
+
+[source, bash]
+----
+$ kubectl run vars --rm -it --env FOOBAR=BAZBOT,HELLO=WORLD --image registry.access.redhat.com/ubi8/ubi-minimal -- /bin/sh
+sh-4.4# echo $HELLO
+WORLD
+----
+
+=== Takeaway
+
+1. Containers on Kubernetes are isolated processes within the cluster.
+2. You can use `kubectl run ...` to start an interactive session on the cluster.

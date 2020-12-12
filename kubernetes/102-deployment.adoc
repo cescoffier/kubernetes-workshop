@@ -1,0 +1,524 @@
+= 102 - Deploying applications on Kubernetes
+
+The interactive shell container is useful for test situations, but that is not what Kubernetes excels at.
+Kubernetes is great at running stateless web services and apps for long periods.
+
+IMPORTANT: We are going to deploy images using Java 11. Make sure your installed JDK is Java 11:
+[source, bash]
+----
+$ java -version
+openjdk version "11.0.6" 2020-01-14
+$ javac -version
+javac 11.0.6
+----
+
+== Deploying the first application
+
+In this section, we will deploy the first Java application on Kubernetes.
+
+=== Getting Started
+
+On your computer, clone the https://github.com/cescoffier/kubernetes-workshop[cescoffier/kubernetes-workshop] Git repository and navigate in the `kubernetes/first-service` directory:
+
+[source, bash]
+----
+$ git clone https://github.com/cescoffier/kubernetes-workshop.git
+Cloning into 'kubernetes-workshop'...
+...
+
+$ cd kubernetes-workshop/kubernetes/first-service
+----
+
+The `first-service` project is a typical looking microservice project written in Java.
+It uses https://quarkus.io[Quarkus] as a framework, but any other Java framework would be similar.
+
+The repository contains `Dockerfiles` located in the `src/main/docker` directory.
+ 
+The business logic is not very relevant or interesting. 
+It just prints a simple message containing the `HOSTNAME` and the current date.
+
+The `kubernetes` directory will contain the kubernetes descriptors.
+
+Before going further, build the application with:
+
+[source, bash]
+----
+mvn package
+----
+  
+=== Deployment
+
+If you're using Minikube from the previous tutorial, then ensure your current terminal session is configured to use the Minikube Docker daemon by running the below command:
+
+[source, bash]
+----
+$ eval $(minikube docker-env)
+----
+
+Next, run `docker build` and wait for it to complete:
+
+[source, bash]
+----
+$ docker build -f src/main/docker/Dockerfile.jvm -t workshop/first-service-jvm .
+----
+
+Next, we're going to create a Deployment manifest, which Kubernetes uses to control scheduling and running your containerized service in a Pod. 
+Create a new file `kubernetes/deployment.yaml` with the following content:
+
+[source, yaml]
+----
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: first-service
+  labels:
+    app: first-service
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: first-service
+  template:
+    metadata:
+      labels:
+        app: first-service
+    spec:
+      containers:
+      - name: first-service
+        image: workshop/first-service-jvm:latest        
+        ports:
+        - name: http
+          containerPort: 8080
+        imagePullPolicy: IfNotPresent          
+----
+
+The descriptor is written using the YAML format. 
+It describes the `first-service` deployment, which, once deployed, instructs Kubernetes to creates two replicas of our container. 
+
+A deployment is a way of telling the Kubernetes scheduler enough about the thing being deployed so that it can schedule work on Kubernetes nodes, handle upgrades, and scale the underlying pods. 
+The above deployment will result in two running single-container pods, which means two separate instances of `first-application` will be running.
+
+The deployment also exposes the port 8080.
+The `imagePullPolicy` indicates to Kubernetes to not pull the image from a container registry is already available, which in our case is what we want. 
+Remember, we are using the Docker daemon from minikube, so when we built the image, it went to that daemon.
+So, the image is already available.
+
+The _labels_ and _selectors_ are used to recognize from where comes the various objects that will be created by Kubernetes.
+
+Run the below `kubectl` command to configure Kubernetes:
+
+
+[source, bash]
+----
+$ kubectl apply -f kubernetes/
+deployment.apps/first-service created
+----
+
+The output indicates the configuration was accepted and is being acted upon by the cluster.
+You can inspect the status of the deployment using the below `kubectl` command:
+
+[source, bash]
+----
+$ kubectl get deployment/first-service
+
+NAME            READY   UP-TO-DATE   AVAILABLE   AGE
+first-service    2/2     2            2           4m20s
+----
+
+If the count of `Available` is equal to `2` then that means the application is successfully running, but you are probably wondering how to access the deployed application. 
+There is no convenient way to talk to the running `first-service` instances as it stands right now. 
+We need to create a Kubernetes Service that can route traffic to the backend pods to talk to them.
+
+=== Service
+
+Kubernetes has a resource called a "service" which is a DNS resolvable endpoint that acts as a proxy to a set of containers. 
+There are several types of Services in Kubernetes, but for now, we are going to focus solely on the `LoadBalancer` type. 
+A `LoadBalancer` service creates a public endpoint that you can access over the public network. 
+The mechanism by which it does this is different depending on where your Kubernetes cluster is running; for example, on Amazon Web Services ("AWS") if you create a `LoadBalancer` then Kubernetes knows how to talk to AWS and provision an Elastic Load Balancer. 
+However, if you are running in Minikube then Kubernetes knows it cannot create an Elastic Load Balancer and does something different.
+
+On your computer create a new file `kubernetes/service.yaml`, with the following content:
+
+[source, yaml]
+----
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: first-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: first-service
+  ports:
+  - port: 8080
+    targetPort: http
+----
+
+Once again, run the now familiar `kubectl apply` command on your computer:
+
+[source, bash]
+----
+$ kubectl apply -f kubernetes/
+deployment.apps/first-service configured
+service/first-service created
+----
+
+Once you run that command, Kubernetes will immediately work to fulfill the request. 
+You can check the status of the service with the following command. 
+However, an important thing to know is that on Minikube the `EXTERNAL-IP` field will always be `<pending>`:
+
+[source, bash]
+----
+$ kubectl get service/first-service
+
+NAME               CLUSTER-IP   EXTERNAL-IP   PORT(S)        AGE
+first-service   LoadBalancer   10.96.237.153   <pending>     8080:30743/TCP   26s
+----
+
+On Minikube to get the address of the service, you can use the below command, which will return the address:
+
+[source, bash]
+----
+$ minikube service first-service --url
+🏃  Starting tunnel for service first-service.
+|-----------|---------------|-------------|------------------------|
+| NAMESPACE |     NAME      | TARGET PORT |          URL           |
+|-----------|---------------|-------------|------------------------|
+| default   | first-service |             | http://127.0.0.1:63827 |
+|-----------|---------------|-------------|------------------------|
+http://127.0.0.1:63827
+❗  Because you are using a Docker driver on darwin, the terminal needs to be open to run it.
+----
+
+NOTE: Depending on your operating system and installation, the previous command may block, and the service would only be available while running.
+
+To test out your service, you can combine this with something such as `curl`; for example, try running the following command from a `bash` shell (replace the URL part) multiple times:
+
+[source, bash]
+----
+$ curl http://127.0.0.1:63827
+----
+
+You should see the response from each instance of your running application. 
+For example, given this output:
+
+[source, bash]
+----
+hello from first-service-5696c74bc8-nqdkj, it is 2020-11-22 10:28:05                                                                                              
+hello from first-service-5696c74bc8-nqdkj, it is 2020-11-22 10:28:06
+hello from first-service-5696c74bc8-5kc2p, it is 2020-11-22 10:28:07
+----
+
+You can see that the `hostname` is changing, which corresponds to the pods running based on the earlier deployment.
+
+[source, bash]
+----
+$ kubectl get pods --selector='app=first-service'
+
+NAME                             READY   STATUS    RESTARTS   AGE
+first-service-5696c74bc8-5kc2p    1/1     Running   0          9m10s
+first-service-5696c74bc8-nqdkj    1/1     Running   0          9m7s
+----
+
+=== Repository layout
+
+Note that our first Kubernetes service consists of three key components: 
+
+* The application source
+* A `Dockerfile` to create a container image - it specified how the application is containerized
+* One or more Kubernetes descriptor files that determine how the service is deployed.
+
+In general, these files should all be stored in the same GitHub repository for the service.
+This is different from the typical monolithic repo structure, where the deployment configuration is stored in a separate repository (e.g., an Ansible playbook that is maintained by operations).
+
+Group your Kubernetes manifests (e.g. ` deployment.yaml`) with your service implementation. 
+It makes it easy to deploy later on and keeps the project configuration local to the code, so they stay in sync. 
+It also creates a convention for other services to do the same thing and allows further tooling to be layered on top.
+
+=== Exercises
+
+1. What if you want to modify the number of deployed replicas of Hello Kubernetes? 
+In `deployment.yaml` update the `replicas` field to 1 and then run `kubectl apply -f kubernetes/deployment.yaml` and see what happens.
+
+=== Takeaways
+
+* A `Deployment` is a configuration construct that allows you to run many containers.
+* A `Service` allows you to expose a `Deployment` externally.
+
+
+== The first step toward microservices
+
+Microservice applications are composed of many cooperatively communicating services. 
+In this section, you will learn how easy it is to connect one service to another. 
+We will update the first service from the previous section to use another service that runs in the same Kubernetes cluster.
+
+=== The Second Service
+
+The new service is a _quote service_.
+It returns a random quote (from the pirate universe).
+
+On your computer, in a terminal, navigate to the `kubernetes/second-service` directory.
+
+This project's layout should be familiar as it the same as `first-service` with `Dockerfiles` and the `kubernetes` directory.
+
+Look at the `kubernetes/service.yaml` file in your console with the below command:
+
+[source, bash]
+----
+$ cat kubernetes/service.yaml
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: second-service
+spec:
+  type: ClusterIP
+  selector:
+    app: second-service
+  ports:
+  - port: 8080
+    targetPort: http
+----
+
+The most crucial piece of information in this service descriptor is the `type: ClusterIP`. 
+We saw a `type: LoadBalancer` service in the first service, which exposed an external IP address to access the pods. 
+Kubernetes offers several types of services, and one of the most common is `ClusterIP`.
+The `ClusterIP` type creates a service that does not have an external IP address, which means the service can only be accessed from inside the cluster.
+The `ClusterIP` service type is widespread for backend services that do not need to be accessed in any way except other consumers in the same cluster. 
+
+To deploy the service run the familiar `kubectl apply` command on your computer:
+
+[source, bash]
+----
+$ mvn package
+$ docker build -f src/main/docker/Dockerfile.jvm -t workshop/second-service-jvm .
+$ kubectl apply -f kubernetes/
+deployment "second-service" created
+service "second-service" created
+----
+
+Once you run that command, Kubernetes will immediately work to fulfill the request. 
+You can check the status of the service with the following command:
+
+[source, bash]
+----
+$ kubectl get service/second-service
+NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+second-service   ClusterIP   10.101.32.105   <none>        8080/TCP   8m51s
+----
+
+Kubernetes did not assign an externally accessible address because of the `ClusterIP` type. That is precisely the outcome we want because this second service is intended to be used as a backend service for the previous first service application should not be exposed outside the cluster.
+
+=== Testing the second service
+
+As said above, the service is not exposed. 
+So how can we test it?
+As we did in the previous workshop, we can connect to the pod and run a few `curl` commands.
+
+First, get the name of the pod:
+
+[source, bash]
+----
+$ kubectl get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+first-service-5696c74bc8-5kc2p    1/1     Running   1          26h
+first-service-5696c74bc8-nqdkj    1/1     Running   1          26h
+second-service-7dcd577fb6-r9q8k   1/1     Running   1          23h
+second-service-7dcd577fb6-sdjkn   1/1     Running   1          23h
+----
+
+Pick the name of a pod belonging to the second-service deployment, for example, _second-service-7dcd577fb6-r9q8k_.
+Then, run the following command:
+
+[source, bash]
+----
+$ kubectl exec --stdin --tty  second-service-7dcd577fb6-r9q8k -- /bin/bash
+----
+
+Replace the name of the pod to match yours.
+
+Then, once connected, run:
+
+[source, bash]
+----
+$ curl http://localhost:8080/quote
+Avast ye landlubbers! Ye can throw ye lunch in Davy Jones’ locker, but not yer homework!
+$ curl http://localhost:8080/quote
+Piracy – Hostile take over. Without the messy paperwork.
+$ exit
+----
+
+If it prints quotes, it works!
+
+=== Calling the second service from the first service
+
+For the next few steps, open another command line terminal, then enter into the directory where you have the code of the first service.
+
+[source, bash]
+----
+$ cd first-service
+----
+
+Update the code to talk to the second service.
+In your IDE, create the `src/main/java/me/escoffier/workshop/SecondServiceClient.java` file with the following content:
+
+[source, java]
+----
+package me.escoffier.workshop;
+
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
+@RegisterRestClient(configKey = "second-service")
+@Produces(MediaType.TEXT_PLAIN)
+public interface SecondServiceClient {
+
+    @Path("/quote")
+    @GET
+    String getQuote();
+
+    @Path("/crash")
+    @GET
+    String crash();
+
+}
+----
+
+This class is a Microprofile Rest client, an easy way to interact with another service using HTTP without dealing with the low-level aspects of the protocol.
+
+NOTE: The `crash` method will be used in the next chapter.
+
+Then, open the `src/main/java/me/escoffier/workshop/MyFirstResource.java`, and update the content to become:
+
+[source, java]
+----
+package me.escoffier.workshop;
+
+import org.eclipse.microprofile.rest.client.inject.RestClient;
+
+import javax.inject.Inject;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
+import java.util.Calendar;
+import java.text.SimpleDateFormat;
+
+@Path("/")
+public class MyFirstResource {
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String print() {      
+        return "hello from " + System.getenv("HOSTNAME") + ", it's " + now();
+    }
+
+    public static final String DATE_FORMAT_NOW = "yyyy-MM-dd HH:mm:ss";
+
+    public static String now() {
+        Calendar cal = Calendar.getInstance();
+        SimpleDateFormat sdf = new SimpleDateFormat(DATE_FORMAT_NOW);
+        return sdf.format(cal.getTime());
+    }
+
+    // --- To be added in 1.0.2 - second service ---
+
+    @Inject @RestClient SecondServiceClient client;
+
+    @GET
+    @Path("/quote")
+    @Produces(MediaType.TEXT_PLAIN)
+    public String printWithQuote() {
+        return "hello from " + System.getenv("HOSTNAME") + ", " + client.getQuote();
+    }
+}
+----
+
+The new code provides a second endpoint ("/quote"), which prints the _hello_ message followed with a quote, retrieved from the second service.
+
+Build the service using:
+
+[source, bash]
+----
+mvn clean package
+----
+
+=== Updating the first service
+
+In the new `/quote` URL implementation, you just wrote the method call to the second service.
+Behind the scene, the Rest Client will call the second service. 
+The url is configured in `src/main/resources/application.properties`:
+
+[source, text]
+----
+second-service/mp-rest/url=http://second-service:8080
+----
+
+As you can see, it uses the `second-service` name, which is the Kubernetes service name. 
+Kubernetes uses an internal DNS server to handle service discovery for your applications.
+You can refer to the previously deployed service by attempting to connect to a named host. 
+In Kubernetes, discovering services is as simple as referring to them by `${SERVICE_NAME}` because there is a built-in DNS service in Kubernetes. 
+While not shown here, if you were isolating services via Kubernetes Namespace functionality, the DNS name would be `${SERVICE_NAME}.${NAMESPACE}`.
+
+Time to deploy then test out the new functionality.
+
+Next, rebuild the Docker image for the modified Hello Kubernetes service.
+
+[source, bash]
+----
+# Be sure to be in the first-service directory
+# Be sure you use the Docker daemon from minikube
+$ docker build -f src/main/docker/Dockerfile.jvm -t workshop/first-service-jvm:1.1 .
+----
+
+Afterward, open the Hello Kubernetes deployment manifest and find the line `image: workshop/first-service-jvm:latest`. Update the line to refer to be `image: workshop/first-service-jvm:1.1`.
+
+Finally, save the file and then run `kubectl apply`:
+
+[source, bash]
+----
+$ kubectl apply kubernetes/
+
+deployment.apps/first-service configured
+service/first-service unchanged
+----
+
+To test out our new endpoint that communicates with the second service, run the below command:
+
+[source, bash]
+----
+$ minikube service first-service --url
+----
+
+Copy the URL, and in another terminal run:
+
+[source, bash]
+----
+$ curl http://127.0.0.1:51793/quote #update the hostname and port
+hello from first-service-84ccd864d5-lgmnl, Avast ye landlubbers! Ye can throw ye lunch in Davy Jones’ locker, but not yer homework!
+----
+
+Run the curl command a few times to call both pods. 
+The code in your first application invokes the HTTP endpoint on the second service to get a random quote.
+
+=== Takeaways
+
+* There are different types of Kubernetes services. You have seen `LoadBalancer` and `ClusterIP`, which are the two you are most likely to encounter. 
+A `LoadBalancer` service assigns and exposes an external address. In contrast, a `ClusterIP` only assigns an internal address and ensures only consumers inside the cluster can reach the service's Pods.
+
+* The Kubernetes _Service_ construct is powerful. 
+One of the most powerful features is that it creates a stable DNS name for all of your backend Pods so that you do not need to run an additional service discovery component inside Kubernetes.
+
+* A `Deployment` in Kubernetes is a powerful construct that allows the cluster scheduler to upgrade Pods using a `RollingUpdate` strategy safely. New instances of the app are started before older versions are removed.
+
+

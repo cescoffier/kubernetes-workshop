@@ -1,0 +1,681 @@
+= 103 - Observability
+
+In this chapter, we will see how you can make your applications more observable and reliable using health checks and metrics.
+
+== Reminder - Updating applications in Kubernetes
+
+In this chapter, we are going to update our applications multiple times.
+First, let's refresh our memories about updating applications.
+
+In general, updating an application is done as follows:
+
+1. Update the code and rebuild using `mvn package`
+2. Build the docker image with a new (incremented) tag, like 1.1, 1.2, 1.3...
+3. If you are not using minikube, deploy this image to the right image registry
+4. Update the `deployment.yaml` file to point to the new tag
+5. Kubernetes terminates the existing pods and updates
+
+This process can be a bit cumbersome in development.
+So, here is another _smoother_ process, to only use in development with Minikube.
+
+1. Update the code and rebuild using `mvn package`
+2. Build the docker image without updating the label - make sure you use the same label as used in the `deployment.yaml` file
+3. Remove and reinstall the deployment using:
+
+[source, bash]
+----
+kubectl delete deployment $NAME # like first-service or second-service
+kubectl apply -f kubernetes/deployment.yaml
+----
+
+Kubernetes deletes the deployment resource.
+Following the infrastructure as code principles, it terminates the pods.
+The second instruction redeploys the deployment, and create the pods using the updated container images.
+
+Here are the one-line versions for both services:
+
+[source, bash]
+----
+mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/first-service-jvm:1.1 .; kubectl delete deployment first-service; kubectl apply -f kubernetes/deployment.yaml
+mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/second-service-jvm:latest .; kubectl delete deployment second-service; kubectl apply -f kubernetes/deployment.yaml
+----
+
+Run them from the appropriate directories.
+
+== Health
+
+This section focuses on health checks and how to instructs Kubernetes to restart fallen parts of your system.
+
+=== Adding health
+
+In both services, add the following dependency to the `pom.xml` file:
+
+[source, xml]
+----
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-smallrye-health</artifactId>
+</dependency>
+----
+
+This dependency provides the health check support.
+It exposes under `/health` the liveness (`health/live`) and readiness (`health/ready`) checks.
+
+By default, it just checks that the application is up and running.
+
+Once added to both services, update the application (following the instructions from above).
+When the new applications are deployed and running, check the output of `/health`, `/health/live`, and `/health/ready` for the first service.
+To achieve this, access the service and append the url suffixes to the service urls:
+
+[source, bash]
+----
+$ minikube service first-service --url
+http://192.168.49.2:31187
+$ curl http://192.168.49.2:31187/health
+{
+    "status": "UP",
+    "checks": [
+    ]
+}%
+$  curl http://192.168.49.2:31187/health/live
+
+
+{
+    "status": "UP",
+    "checks": [
+    ]
+}%
+$ curl http://192.168.49.2:31187/health/ready
+{
+    "status": "UP",
+    "checks": [
+    ]
+}%
+----
+
+The output is always the same because we didn't configure the checks and none of the extensions we are using in the application add any specific checks.
+
+=== Implementing a health check
+
+In this section, we will add a health check to the first application.
+This check will contribute to the liveness check.
+
+In the first-service module, create the class `me.escoffier.workshop.MyHealthCheck` in the `src/main/java` source root.
+In this class, add the following content:
+
+[source, java]
+----
+package me.escoffier.workshop;
+
+import org.eclipse.microprofile.health.HealthCheck;
+import org.eclipse.microprofile.health.HealthCheckResponse;
+import org.eclipse.microprofile.health.Liveness;
+
+@Liveness // Contribute to the liveness check
+public class MyHealthCheck implements HealthCheck { // Implement health check
+    @Override
+    public HealthCheckResponse call() { // Implementation of the check
+        return HealthCheckResponse.up("So far so good");
+    }
+}
+----
+
+Then, update the application.
+
+Run the commands, to check the new output:
+
+[source, bash]
+----
+$ minikube service first-service --url
+http://192.168.49.2:31187
+$ curl http://192.168.49.2:31187/health
+{
+    "status": "UP",
+    "checks": [
+        {
+            "name": "So far so good",
+            "status": "UP"
+        }
+    ]
+}%
+$  curl http://192.168.49.2:31187/health/live
+{
+    "status": "UP",
+    "checks": [
+        {
+            "name": "So far so good",
+            "status": "UP"
+        }
+    ]
+}%
+$ curl http://192.168.49.2:31187/health/ready
+{
+    "status": "UP",
+    "checks": [
+    ]
+}%
+----
+
+As you can see, the check has been added.
+Adding checks is essential as, as we will see in the next section, Kubernetes uses them to determine if the application (pod) is alive and ready.
+
+=== Registering health checks in the kubernetes deployment
+
+In this section, we will augment the kubernetes deployment from our two applications to ask kubernetes to check the state of our applications.
+Let's start with the first-service.
+As we have seen above, the checks are working.
+
+In the `deployment.yaml`, add the health check registration:
+
+[source, yaml]
+----
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: first-service
+  labels:
+    app: first-service
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: first-service
+  template:
+    metadata:
+      labels:
+        app: first-service
+    spec:
+      containers:
+      - name: first-service
+        image: workshop/first-service-jvm:1.1
+        ports:
+        - name: http
+          containerPort: 8080
+        imagePullPolicy: IfNotPresent
+# To be added:
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health/live
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 10
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health/ready
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 10
+----
+
+Then, update the application.
+
+**Your turn now**, add the health check registration to the second-service.
+No need to implement a custom check, we just want to make sure that the application is up and running.
+
+=== Self-repair
+
+Before going further, make sure you updated the second service with the health check registration.
+
+The second application has a _huge_ flow. The `/crash` endpoint stops the HTTP server of the application.
+To verify that the health check have been configured correctly we will stop the application and see if Kubernetes detects the crash and recreates the pod.
+
+In the `MyFirstResource` class from the first service, add the following endpoint:
+
+[source, java]
+----
+@GET
+@Path("/crash")
+@Produces(MediaType.TEXT_PLAIN)
+public String crashSecondService() {
+    return client.crash();
+}
+----
+
+This endpoint is just there to let us stop the second service.
+Once added, update the first application.
+
+Then, in another terminal window, run:
+
+[source, bash]
+----
+kubectl get pods -w
+----
+
+That gives you an _up to date_ view of our pods.
+
+Invoke the first service `crash` endpoint and see how it behaves:
+
+[source, bash]
+----
+$ minikube service first-service --url
+http://192.168.49.2:31187
+$ curl http://192.168.49.2:31187/crash
+bye bye
+$ curl http://192.168.49.2:31187/crash
+bye bye
+----
+
+Make sure you call the crash method on all the second-service pods.
+Iterate the last command until you get consecutive error messages.
+
+In the other terminal you should see (after ~ 30 seconds):
+
+[source, bash]
+----
+second-service-8459457fbb-27b5m   0/1     Running   1          2m5s
+second-service-8459457fbb-zdnff   1/1     Running   0          2m5s
+second-service-8459457fbb-27b5m   1/1     Running   1          2m9s
+second-service-8459457fbb-zdnff   0/1     Running   1          2m51s
+second-service-8459457fbb-zdnff   1/1     Running   1          3m15s
+----
+
+Notice the 3 steps:
+
+1. The pod is seen as not healthy anymore
+2. The pod is restarted (restart 1)
+3. The pod is ready
+
+Kubernetes has detected the crash thanks to our health check.
+
+To make the check more reactive, update the configuration with:
+
+[source, yaml]
+----
+livenessProbe:
+  failureThreshold: 1
+  httpGet:
+    path: /health/live
+    port: 8080
+    scheme: HTTP
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  successThreshold: 1
+  timeoutSeconds: 2
+----
+
+Update the second service and re-run the experiment.
+You should see the restart much faster.
+
+=== Takeaways
+
+Health checks are an essential part of Kubernetes application and Cloud Native applications:
+
+* each component must expose liveness / readiness / startup health checks
+* Kubernetes must be configured to restart fallen pods in a timely fashion
+* be sure to understand the difference between liveness (I am alive?), readiness (Can I handle request?), startup (Am I ready to serve?)
+
+== Metrics
+
+In this section we will instrument the first application to expose metrics.
+
+=== Micrometer and Prometheus
+
+To expose metrics, we must first add two dependencies.
+In the `pom.xml` from the first-service project add the following dependencies:
+
+[source, xml]
+----
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-micrometer</artifactId>
+</dependency>
+<dependency>
+  <groupId>io.micrometer</groupId>
+  <artifactId>micrometer-registry-prometheus</artifactId>
+  <version>1.6.1</version>
+</dependency>
+----
+
+The first dependency is collecting metrics using the https://micrometer.io/[micrometer] framework, one of the most popular Java alternative.
+The second dependency configure the metrics to be exposed using the Prometheus format.
+
+https://prometheus.io/[Prometheus] is a metrics service collecting and storing metrics.
+It's becoming the de-facto standard in the Cloud.
+It also provides a minimal dashboard and alerting functionalities.
+
+Prometheus uses _text_ as output/input format.
+Each line would be a metrics.
+
+Update the application after having added these dependencies.
+Then, query the `/metrics` endpoint from the first service, you should get a _big wall of text_:
+
+[source, text]
+----
+# HELP jvm_memory_usage_after_gc_percent The percentage of old gen heap used after the last GC event, in the range [0..1]
+# TYPE jvm_memory_usage_after_gc_percent gauge
+jvm_memory_usage_after_gc_percent{area="heap",generation="old",} 0.011358014697495438
+# HELP jvm_threads_live_threads The current number of live threads including both daemon and non-daemon threads
+# TYPE jvm_threads_live_threads gauge
+jvm_threads_live_threads 30.0
+...
+jvm_gc_overhead_percent 2.9530539020799395E-4
+# HELP http_server_connections_seconds_max
+# TYPE http_server_connections_seconds_max gauge
+http_server_connections_seconds_max 0.043021347
+# HELP http_server_connections_seconds
+# TYPE http_server_connections_seconds summary
+http_server_connections_seconds_active_count 1.0
+http_server_connections_seconds_duration_sum 0.042441024
+# HELP http_server_requests_seconds
+# TYPE http_server_requests_seconds summary
+http_server_requests_seconds_count{method="GET",outcome="SUCCESS",status="200",uri="/health/live",} 24.0
+http_server_requests_seconds_sum{method="GET",outcome="SUCCESS",status="200",uri="/health/live",} 0.194263872
+http_server_requests_seconds_count{method="GET",outcome="SUCCESS",status="200",uri="/health/ready",} 8.0
+http_server_requests_seconds_sum{method="GET",outcome="SUCCESS",status="200",uri="/health/ready",} 0.01607319
+http_server_requests_seconds_count{method="GET",outcome="SUCCESS",status="200",uri="/quote",} 1.0
+http_server_requests_seconds_sum{method="GET",outcome="SUCCESS",status="200",uri="/quote",} 0.429817626
+#...
+# HELP process_cpu_usage The "recent cpu usage" for the Java Virtual Machine process
+# TYPE process_cpu_usage gauge
+process_cpu_usage 0.0
+# HELP process_files_max_files The maximum file descriptor count
+# TYPE process_files_max_files gauge
+process_files_max_files 1048576.0
+...
+----
+
+The response contains:
+
+* metrics about the system (process)
+* metrics about the JVM (memory, threads...)
+* metrics about the application technical components (http server)
+
+However, that output does not contain business metrics
+
+=== Adding business metrics
+
+Adding business metrics is done using the Micrometer annotations.
+In the `MyFirstResource` class, update the content to be:
+
+[source, java]
+----
+package me.escoffier.workshop;
+
+import io.micrometer.core.annotation.Counted;
+import io.micrometer.core.annotation.Timed;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
+
+import javax.inject.Inject;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
+import java.util.Calendar;
+import java.text.SimpleDateFormat;
+
+@Path("/")
+public class MyFirstResource {
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Counted("first-service.print.invocations")  // <--- Added to keep track of the number of invocations
+    public String print() {
+        return "hello from " + System.getenv("HOSTNAME") + ", it's " + now();
+    }
+
+    public static final String DATE_FORMAT_NOW = "yyyy-MM-dd HH:mm:ss";
+
+    public static String now() {
+        Calendar cal = Calendar.getInstance();
+        SimpleDateFormat sdf = new SimpleDateFormat(DATE_FORMAT_NOW);
+        return sdf.format(cal.getTime());
+    }
+
+    @Inject @RestClient SecondServiceClient client;
+
+    @GET
+    @Path("/quote")
+    @Produces(MediaType.TEXT_PLAIN)
+    @Timed("first-service.printWithQuote.time")  // <-- Added to measure the time spent in this method
+    public String printWithQuote() {
+        return "hello from " + System.getenv("HOSTNAME") + ", " + client.getQuote();
+    }
+
+
+    @GET
+    @Path("/crash")
+    @Produces(MediaType.TEXT_PLAIN)
+    public String crashSecondService() {
+        return client.crash();
+    }
+}
+----
+
+Update the application and check the `/metrics` endpoint.
+Invoke the `/` and `/quote` multiple times and check that the metrics are updated.
+
+=== Takeaways
+
+Metrics are essential to detect bottlenecks and anticipate potential cracks and failures:
+
+* instrument all your application with OS, JVM and technical component metrics
+* instrument your application with business metrics
+* configure a poller mechanism
+* build a comprehensive dashboard and set up alerts
+* correlate metrics and events - primordial during postmortem
+
+== Configuration
+
+In this section, we are going to configure the second application with a simple _config map_.
+This configuration enables/disables a _slow_ mode, that we will utilize in the resilience section.
+
+The _slow mode_ is enabled using the `SLOW` environment property.
+We will create a config map containing the configuration and attach this config map to the deployment.
+The access to the config map content will be done using environment properties.
+For the seek of simplicity, the config map will only contain the `slow` boolean.
+
+=== Creating a config map
+
+First, create the config map as follows:
+
+[source, bash]
+----
+kubectl create configmap second-service-config --from-literal=slow=true
+kubectl get configmaps  second-service-config -o yaml
+----
+
+The second instruction verifies that the config map is created.
+
+In this example, we create the config map from literals (you can have multiple literals in the create command).
+There are other possibilities such as creating config map from files or directly write the descriptor (as printed by the second command).
+
+At this point, we created the config map.
+It's time to configure the second-service deployment to read it.
+
+=== Attaching a config map to a deployment
+
+Edit the `deployment.yaml` from the second-service to add the config map:
+
+[source, yaml]
+----
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: second-service
+  labels:
+    app: second-service
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: second-service
+  template:
+    metadata:
+      labels:
+        app: second-service
+    spec:
+      containers:
+      - name: second-service
+        image: workshop/second-service-jvm:latest
+        ports:
+        - name: http
+          containerPort: 8080
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 1
+          httpGet:
+            path: /health/live
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 2
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health/ready
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 10
+# Added:
+        env:
+          - name: SLOW
+            valueFrom:
+              configMapKeyRef:
+                name: second-service-config
+                key: slow
+----
+
+Then, update the application.
+Once up and ready, uses the _slow_ service using `/quote` endpoint offered by the first service:
+
+[source, bash]
+----
+$ curl http://192.168.49.2:31187/quote
+----
+
+Call the service multiple times and notice the delay in the response (up to 2 seconds).
+
+== Resilience and Fault-Tolerance
+
+In this section, we will extend the first-service to handle the _slow_ second-service.
+
+=== Adding fault-tolerance
+
+First, in the `pom.xml` file from the first-service, add the following dependency:
+
+[source, xml]
+----
+<dependency>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-smallrye-fault-tolerance</artifactId>
+</dependency>
+----
+
+=== Adding timeout and fallback
+
+The integration point is located in the `SecondServiceClient` interface.
+Remember, this _interface_ is a REST Client interface which contain the method to invoke the second service.
+
+Edit the `SecondServiceClient` class to add:
+
+1. a timeout on the `getQuote` method
+2. a fallback method
+
+[source, java]
+----
+package me.escoffier.workshop;
+
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Timeout;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+import java.time.temporal.ChronoUnit;
+
+@RegisterRestClient(configKey = "second-service")
+@Produces(MediaType.TEXT_PLAIN)
+public interface SecondServiceClient {
+
+    @Timeout(value = 1, unit = ChronoUnit.SECONDS) // <---- Added
+    @Fallback(fallbackMethod = "getFallbackQuote") // <---- Added
+    @Path("/quote")
+    @GET
+    String getQuote();
+
+    @Path("/crash")
+    @GET
+    String crash();
+
+
+    // A simple fallback
+    default String getFallbackQuote() {
+        return "I am fascinated by air. If you remove the air from the sky, all the birds would fall to the ground. And all the planes, too.";
+    }
+
+}
+----
+
+Update the first application and call the `/quote` endpoint:
+
+[source, bash]
+----
+$ curl http://192.168.49.2:31187/quote
+hello from first-service-868cbcdfb8-kbx4m, I am fascinated by air. If you remove the air from the sky, all the birds would fall to the ground. And all the planes, too.%
+$ curl http://192.168.49.2:31187/quote
+hello from first-service-868cbcdfb8-kbx4m, I am fascinated by air. If you remove the air from the sky, all the birds would fall to the ground. And all the planes, too.%
+$ curl http://192.168.49.2:31187/quote
+hello from first-service-868cbcdfb8-kbx4m, A pirate is a man that is weak to achieve but too strong to steal from even the greatest achiever.%
+----
+
+Most of the time you will see the fallback quote, as a one-second timeout is probably too short.
+Remember that the second service introduces a delay up to two seconds.
+
+=== Retries
+
+_Disclaimer:_ Before using retries, make sure it would not break the integrity of your system.
+Only idempotent systems support retry safely.
+
+In addition to the timeout and fallback, let's add a _retry_:
+
+[source, java]
+----
+@Retry(retryOn = TimeoutException.class,
+        maxRetries = 4,
+        maxDuration = 10,
+        durationUnit = ChronoUnit.SECONDS)
+----
+
+Update the application and query the `/quote` endpoints multiple times.
+The success rate should be much higher.
+
+=== Circuit Breaker
+
+Remove the `@Retry`, instead, add:
+
+[source, java]
+----
+@CircuitBreaker(successThreshold = 10, requestVolumeThreshold = 4, failureRatio=0.75,delay = 1000)
+----
+
+Update the application and stress the `/quote` endpoint.
+What do you observe?
+
+=== Takeaways
+
+* Each integration-point, especially synchronous, must be protected against cascading failures and slowness
+* MicroProfile Fault Tolerance provides an easy way to prevent terrible cracks and failures
+* Use `@Timeout`, `@Fallback` and `@CircuitBreaker` when necessary
+* Only use `@Retry` if your system permits it.

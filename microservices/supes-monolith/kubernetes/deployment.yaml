@@ -1,0 +1,42 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supes-monolith
+  labels:
+    app: supes-monolith
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: supes-monolith
+  template:
+    metadata:
+      labels:
+        app: supes-monolith
+    spec:
+      containers:
+      - name: supes-monolith
+        image: workshop/supes-monolith:latest
+        ports:
+        - name: http
+          containerPort: 8080
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: QUARKUS_DATASOURCE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: supes-config
+                key: database
+          - name: QUARKUS_DATASOURCE_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: supes-database-secret
+                key: username
+          - name: QUARKUS_DATASOURCE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: supes-database-secret
+                key: password

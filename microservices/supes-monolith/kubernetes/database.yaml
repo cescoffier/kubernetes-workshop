@@ -1,0 +1,37 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  selector:
+    matchLabels:
+      app: supes-database
+  template:
+    metadata:
+      labels:
+        app: supes-database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:9.6.5
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: supes
+            - name: POSTGRES_USER
+              value: supes
+            - name: POSTGRES_PASSWORD
+              value: supes
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supes-database
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: supes-database

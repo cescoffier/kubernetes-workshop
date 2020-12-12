@@ -1,0 +1,7 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: supes-config
+data:
+  database: "jdbc:postgresql://supes-database:5432/supes"
