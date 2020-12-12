@@ -322,11 +322,11 @@ In the tutorial above, you used the Docker Hub registry, so everything you uploa
 Typically, you'll use a registry running in your own environment for performance and have some access control on your images.
 Read up on how to run a registry in your own environment:
 
-* [AWS Container Registry](https://aws.amazon.com/ecr/).
-* [Google Container Registry](https://cloud.google.com/container-registry/)
-* [Azure Container Registry](https://azure.microsoft.com/en-us/services/container-registry/)
-* [Docker's self-hosted registry](https://docs.docker.com/registry/)
-* [Quay's registry, available on-premise or as a service](https://quay.io/)
+* https://quay.io/[Quay's registry, available on-premise or as a service]
+* https://aws.amazon.com/ecr/[AWS Container Registry].
+* https://cloud.google.com/container-registry/[Google Container Registry]
+* https://azure.microsoft.com/en-us/services/container-registry/[Azure Container Registry]
+* https://docs.docker.com/registry/[Docker's self-hosted registry]
 
 NOTE: Remember: even though many are called a "Container Registry", they store *images*.
 
