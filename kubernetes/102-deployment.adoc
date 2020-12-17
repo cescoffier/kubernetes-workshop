@@ -265,12 +265,13 @@ On your computer, in a terminal, navigate to the `kubernetes/second-service` dir
 
 This project's layout should be familiar as it the same as `first-service` with `Dockerfiles` and the `kubernetes` directory.
 
-Look at the `kubernetes/service.yaml` file in your console with the below command:
+Create the `kubernetes/deployment.yaml` following the same structure as the one used for the `first-service`.
+Don't forget to update the labels, selector and image.
 
-[source, bash]
+Then, create the `kubernetes/service.yaml` file with the following content:
+
+[source, yaml]
 ----
-$ cat kubernetes/service.yaml
-
 ---
 apiVersion: v1
 kind: Service
@@ -285,7 +286,7 @@ spec:
     targetPort: http
 ----
 
-The most crucial piece of information in this service descriptor is the `type: ClusterIP`. 
+The most essential piece of information in this service descriptor is the `type: ClusterIP`.
 We saw a `type: LoadBalancer` service in the first service, which exposed an external IP address to access the pods. 
 Kubernetes offers several types of services, and one of the most common is `ClusterIP`.
 The `ClusterIP` type creates a service that does not have an external IP address, which means the service can only be accessed from inside the cluster.
@@ -362,6 +363,20 @@ For the next few steps, open another command line terminal, then enter into the 
 [source, bash]
 ----
 $ cd first-service
+----
+
+Edit the `pom.xml` file and add the following dependencies:
+
+[source, xml]
+----
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-rest-client</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-resteasy-jackson</artifactId>
+</dependency>
 ----
 
 Update the code to talk to the second service.
