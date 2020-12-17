@@ -52,7 +52,12 @@ If you're using Minikube from the previous tutorial, then ensure your current te
 
 [source, bash]
 ----
+# On Linux and Mac:
 $ eval $(minikube docker-env)
+
+# On Windows:
+> minikube docker-env | Invoke-Expression
+
 ----
 
 Next, run `docker build` and wait for it to complete:

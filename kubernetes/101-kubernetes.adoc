@@ -83,6 +83,8 @@ $ eval $(minikube docker-env)
 $ docker ps
 ----
 
+TIP: On Windows, replace the `eval $(minikube docker-env)` command with: `minikube docker-env | Invoke-Expression`
+
 In the second terminal, you have access to the Docker daemon within the VM.
 As you can notice, many containers are running: these are forming the backbone of Kubernetes.
 
