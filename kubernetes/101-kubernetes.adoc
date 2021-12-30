@@ -28,12 +28,12 @@ The significant bits are the last line, `kubectl is now configured to use "minik
 
 [source, bash]
 ----
-😄  minikube v1.15.1 on Darwin 10.15.7
+😄  minikube v1.24.0 on Darwin 12.1
 ✨  Automatically selected the docker driver. Other choices: hyperkit, virtualbox
 👍  Starting control plane node minikube in cluster minikube
 🚜  Pulling base image ...
-💾  Downloading Kubernetes v1.19.4 preload ...
-🐳  Preparing Kubernetes v1.19.4 on Docker 19.03.13 ...
+💾  Downloading Kubernetes v1.22.3 preload ...
+🐳  Preparing Kubernetes v1.22.3 on Docker 20.10.8 ...
 🔎  Verifying Kubernetes components...
 🌟  Enabled addons: storage-provisioner, default-storageclass
 🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
@@ -45,7 +45,8 @@ Type `kubectl cluster-info` into the command line.
 [source, bash]
 ----
 $ kubectl cluster-info
-Kubernetes master is running at https://127.0.0.1:32772
+Kubernetes control plane is running at https://127.0.0.1:50372
+CoreDNS is running at https://127.0.0.1:50372/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 ----
 
 The `kubectl cluster-info` command is excellent for querying available endpoints of any Kubernetes cluster, which can be numerous on a more advanced cluster.

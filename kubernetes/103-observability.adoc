@@ -37,6 +37,7 @@ Here are the one-line versions for both services:
 [source, bash]
 ----
 mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/first-service-jvm:1.1 .; kubectl delete deployment first-service; kubectl apply -f kubernetes/deployment.yaml
+
 mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/second-service-jvm:latest .; kubectl delete deployment second-service; kubectl apply -f kubernetes/deployment.yaml
 ----
 
@@ -59,7 +60,7 @@ In both services, add the following dependency to the `pom.xml` file:
 ----
 
 This dependency provides the health check support.
-It exposes under `/health` the liveness (`health/live`) and readiness (`health/ready`) checks.
+It exposes under `/q/health` the liveness (`/q/health/live`) and readiness (`/q/health/ready`) checks.
 
 By default, it just checks that the application is up and running.
 
@@ -71,13 +72,13 @@ To achieve this, access the service and append the url suffixes to the service u
 ----
 $ minikube service first-service --url
 http://192.168.49.2:31187
-$ curl http://192.168.49.2:31187/health
+$ curl http://192.168.49.2:31187/q/health
 {
     "status": "UP",
     "checks": [
     ]
 }%
-$  curl http://192.168.49.2:31187/health/live
+$  curl http://192.168.49.2:31187/q/health/live
 
 
 {
@@ -85,7 +86,7 @@ $  curl http://192.168.49.2:31187/health/live
     "checks": [
     ]
 }%
-$ curl http://192.168.49.2:31187/health/ready
+$ curl http://192.168.49.2:31187/q/health/ready
 {
     "status": "UP",
     "checks": [
@@ -128,7 +129,7 @@ Run the commands, to check the new output:
 ----
 $ minikube service first-service --url
 http://192.168.49.2:31187
-$ curl http://192.168.49.2:31187/health
+$ curl http://192.168.49.2:31187/q/health
 {
     "status": "UP",
     "checks": [
@@ -138,7 +139,7 @@ $ curl http://192.168.49.2:31187/health
         }
     ]
 }%
-$  curl http://192.168.49.2:31187/health/live
+$  curl http://192.168.49.2:31187/q/health/live
 {
     "status": "UP",
     "checks": [
@@ -148,7 +149,7 @@ $  curl http://192.168.49.2:31187/health/live
         }
     ]
 }%
-$ curl http://192.168.49.2:31187/health/ready
+$ curl http://192.168.49.2:31187/q/health/ready
 {
     "status": "UP",
     "checks": [
@@ -199,7 +200,7 @@ spec:
         livenessProbe:
           failureThreshold: 3
           httpGet:
-            path: /health/live
+            path: /q/health/live
             port: 8080
             scheme: HTTP
           initialDelaySeconds: 0
@@ -209,7 +210,7 @@ spec:
         readinessProbe:
           failureThreshold: 3
           httpGet:
-            path: /health/ready
+            path: /q/health/ready
             port: 8080
             scheme: HTTP
           initialDelaySeconds: 0
@@ -295,7 +296,7 @@ To make the check more reactive, update the configuration with:
 livenessProbe:
   failureThreshold: 1
   httpGet:
-    path: /health/live
+    path: /q/health/live
     port: 8080
     scheme: HTTP
   initialDelaySeconds: 0
@@ -331,9 +332,8 @@ In the `pom.xml` from the first-service project add the following dependencies:
   <artifactId>quarkus-micrometer</artifactId>
 </dependency>
 <dependency>
-  <groupId>io.micrometer</groupId>
-  <artifactId>micrometer-registry-prometheus</artifactId>
-  <version>1.6.1</version>
+  <groupId>io.quarkus</groupId>
+  <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
 </dependency>
 ----
 
@@ -348,7 +348,7 @@ Prometheus uses _text_ as output/input format.
 Each line would be a metrics.
 
 Update the application after having added these dependencies.
-Then, query the `/metrics` endpoint from the first service, you should get a _big wall of text_:
+Then, query the `/q/metrics` endpoint from the first service, you should get a _big wall of text_:
 
 [source, text]
 ----
@@ -453,7 +453,7 @@ public class MyFirstResource {
 }
 ----
 
-Update the application and check the `/metrics` endpoint.
+Update the application and check the `/q/metrics` endpoint.
 Invoke the `/` and `/quote` multiple times and check that the metrics are updated.
 
 === Takeaways
@@ -529,7 +529,7 @@ spec:
         livenessProbe:
           failureThreshold: 1
           httpGet:
-            path: /health/live
+            path: /q/health/live
             port: 8080
             scheme: HTTP
           initialDelaySeconds: 0
@@ -539,7 +539,7 @@ spec:
         readinessProbe:
           failureThreshold: 3
           httpGet:
-            path: /health/ready
+            path: /q/health/ready
             port: 8080
             scheme: HTTP
           initialDelaySeconds: 0
@@ -672,6 +672,82 @@ Remove the `@Retry`, instead, add:
 
 Update the application and stress the `/quote` endpoint.
 What do you observe?
+
+== Monitoring with Prometheus
+
+In the <<_metrics>> section, we exposed metrics.
+But, at the moment, nothing collects these metrics.
+
+In this section, we will deploy Prometheus, a popular monitoring framework.
+Prometheus _scrapes_ metrics periodically and stores them in as time-series in a database.
+In general, you use another tool such as Grafana to build a monitoring dashboard from the stored metrics.
+However, for the sake of simplicity, we will only deploy Prometheus.
+
+First, you need Helm, a package manager for Kubernetes.
+Follow the instructions from https://helm.sh/docs/intro/install/ to install Helm on your system.
+
+Once Helm is installed, run:
+
+[source, shell script]
+----
+> helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+> helm install prometheus prometheus-community/prometheus
+> kubectl expose service prometheus-server --type=NodePort --target-port=9090 --name=prometheus-server-np
+----
+
+Access the Prometheus UI using (in a separate terminal):
+
+[source, shell script]
+----
+> minikube service prometheus-server-np
+----
+
+The UI can take some time to appear...
+Once available, go to `Status -> Target`.
+It lists the configured _targets_, _i.e._, the scrapped URLs.
+
+By default, it does not retrieve the metrics from our applications.
+We need to edit the Prometheus configuration and add a _job_.
+
+We need to add the following YAML snippet:
+
+[source, yaml]
+----
+- job_name: first-service
+  metrics_path: /q/metrics
+  kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names:
+      - default
+    selectors:
+    - role: pod
+      label: app=first-service
+----
+
+We need to edit the `prometheus-server` config map to insert this snippet.
+Either:
+
+* use `kubectl edit cm prometheus-server` and edit the config map directly;
+* or:
+
+1. retrieve the config using `kubectl get cm prometheus-server -o yaml`,
+2. copy the config map into a file,
+3. edit the file (**IMPORTANT**: remove the `resourceVersion: "..."` and `uid: ...` lines),
+4. apply the updated config map using `kubectl apply -f $FILE`
+
+IMPORTANT: Be extra cautious about the indentation...
+
+Then, go back to the Prometheus UI and verify that the configuration has been changed in `Status -> Configuration`.
+If not updated, check your YAML syntax.
+
+Go to `Status -> Target` and wait until the `first-service` endpoints become `UP`.
+It can take a few seconds, depending on the scrape configuration. Prometheus collects the metrics from all the replicas and consolidates them.
+
+Now, go into the Graph view, and query some of your metrics, such as `first_service_printWithQuote_time_seconds_count`.
+
+IMPORTANT: Metrics are created lazily, so invoke the endpoint first.
+Then, the scrape happens every 60 seconds, so it can take up to 60 seconds to get the value.
 
 === Takeaways
 

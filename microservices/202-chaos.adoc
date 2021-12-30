@@ -1,0 +1,38 @@
+= Chaos Engineering
+
+This chapter will try to break the systems you implemented in _201 - microservices_.
+
+IMPORTANT: Make sure your Docker is using the minikube Docker socket.
+Run 'eval $(minikube docker-env)' to configure Docker correctly.
+
+IMPORTANT: Make sure your application is deployed and running.
+
+== Objective
+
+In this chapter, you will implement a command-line tool that:
+
+1. connects to your Kubernetes cluster,
+2. retrieves a `Deployment` object based on a given name (command-line option) - note that it should not select the database deployment, only your functional services,
+3. randomly kills one of the associated pods (if any).
+
+If your system has been following the principles covered in this class, your application should recover smoothly, and the system, while degraded, should still be able to reply to user requests.
+
+== The command line
+
+The command line project is located in the `chaos` directory. It's also a Quarkus application.
+
+The application uses the `kubernetes-client` extension, giving you access to your Kubernetes cluster.
+As you can see in the `ChaosCommand` class, you can access the various Kubernetes objects.
+
+== Developing the command line
+
+To develop the command line, use `mvn quarkus:dev -Dquarkus.args='--deployment=first-service'`.
+Edit the code and when you want to run it, hit `<space>`.
+To change the command line parameter, hit `e`.
+
+== Packaging the command line
+
+Package the command-line tool using `mvn package`.
+Then, you can run it using `java -jar target/quarkus-app/quarkus-run.jar --deployment=...`
+
+NOTE: To delete a pod with the Kubernetes client use: `kubernetes.pods().delete(pod);`, with `pod` the `Pod` object to delete.

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-* Java (JDK) 11 - https://adoptopenjdk.net/
+* Java (JDK) 11 or 17 - https://adoptium.net/
 * Docker - https://docs.docker.com/get-docker/
 * Minikube - https://minikube.sigs.k8s.io/docs/start/
 
@@ -19,7 +19,7 @@
 ### Quarkus 
 
 * Quarkus guides: https://quarkus.io/guides
-* Supes Workshop: https://quarkus.io/quarkus-workshops/super-heroes/
+* _Supes_ Workshop: https://quarkus.io/quarkus-workshops/super-heroes/
 * Books about Quarkus: https://quarkus.io/books/
 * Understanding Quarkus: https://developers.redhat.com/books/understanding-quarkus
 * Practising Quarkus: https://developers.redhat.com/books/practising-quarkus
