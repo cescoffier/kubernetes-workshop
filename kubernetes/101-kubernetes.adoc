@@ -161,7 +161,7 @@ Set some environment variables:
 
 [source, bash]
 ----
-$ kubectl run vars --rm -it --env FOOBAR=BAZBOT,HELLO=WORLD --image registry.access.redhat.com/ubi8/ubi-minimal -- /bin/sh
+$ kubectl run vars --rm -it --env FOOBAR=BAZBOT --env HELLO=WORLD --image registry.access.redhat.com/ubi8/ubi-minimal -- /bin/sh
 sh-4.4# echo $HELLO
 WORLD
 ----

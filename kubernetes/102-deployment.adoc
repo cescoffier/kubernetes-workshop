@@ -369,7 +369,7 @@ For the next few steps, open another command line terminal, then enter into the 
 
 [source, bash]
 ----
-$ cd first-service
+$ cd ../first-service
 ----
 
 Edit the `pom.xml` file and add the following dependencies:
@@ -379,10 +379,6 @@ Edit the `pom.xml` file and add the following dependencies:
 <dependency>
   <groupId>io.quarkus</groupId>
   <artifactId>quarkus-rest-client-reactive-jackson</artifactId>
-</dependency>
-<dependency>
-  <groupId>io.quarkus</groupId>
-  <artifactId>quarkus-resteasy-reactive-jackson</artifactId>
 </dependency>
 ----
 
