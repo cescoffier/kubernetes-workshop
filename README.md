@@ -13,6 +13,7 @@
 * [102 - Kubernetes Workshop - Applications](kubernetes/102-deployment.adoc)
 * [103 - Kubernetes Workshop - Observability and Resilience](kubernetes/103-observability.adoc)
 * [201 - Microservice Workshop](microservices/201-microservices.adoc)
+* [202 - Chaos Engineering](microservices/202-chaos.adoc)
 
 ## Resources
 
