@@ -25,7 +25,7 @@ So, here is another _smoother_ process, to only use in development with Minikube
 [source, bash]
 ----
 kubectl delete deployment $NAME # like first-service or second-service
-kubectl apply -f kubernetes/deployment.yaml
+kubectl apply -f kubernetes/
 ----
 
 Kubernetes deletes the deployment resource.
@@ -36,9 +36,9 @@ Here are the one-line versions for both services:
 
 [source, bash]
 ----
-mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/first-service-jvm:1.1 .; kubectl delete deployment first-service; kubectl apply -f kubernetes/deployment.yaml
+mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/first-service-jvm:1.1 .; kubectl delete deployment first-service; kubectl apply -f kubernetes/
 
-mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/second-service-jvm:latest .; kubectl delete deployment second-service; kubectl apply -f kubernetes/deployment.yaml
+mvn clean package; docker build -f src/main/docker/Dockerfile.jvm -t workshop/second-service-jvm:latest .; kubectl delete deployment second-service; kubectl apply -f kubernetes/
 ----
 
 Run them from the appropriate directories.

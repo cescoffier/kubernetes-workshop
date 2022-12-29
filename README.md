@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-* Java (JDK) 11 or 17 - https://adoptium.net/
-* Docker - https://docs.docker.com/get-docker/
+* Java (JDK) 17+ - https://adoptium.net/
+* Docker - https://docs.docker.com/get-docker/ or Rancher Desktop (https://rancherdesktop.io/) or Podman Desktop (https://podman-desktop.io/)
 * Minikube - https://minikube.sigs.k8s.io/docs/start/
 
 ## The journey 

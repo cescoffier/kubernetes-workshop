@@ -11,6 +11,11 @@ It does not cover any advanced features such as squashing or `docker-compose`.
 Be sure you have docker or docker desktop installed.
 Follows the instructions from the https://docs.docker.com/get-docker/[Docker Website] to download, install, and checks your installation.
 
+You can also use:
+
+- Rancher Desktop - https://rancherdesktop.io/
+- Podman Desktop - https://podman-desktop.io/
+
 == Running a container 
 
 A container is an isolated process, typically a Linux process: it doesn't see other processes, it has its networking stack, and it has its own filesystem.
@@ -72,6 +77,10 @@ sh-4.4# exit
 ----
 
 You'll notice this time it starts up just as fast as a normal process would.
+
+IMPORTANT: when using orchestrator, computing the placement of the container and downloading the image can take a lot of time.
+
+IMPORTANT: snapshot/restore mechanism can reduce even more the startup time by snapshotting the memory of a container and restoring it.
 
 === Each container has its own filesystem
 
@@ -180,7 +189,7 @@ For example, here you download and then run version 8.3 of the `ubi-minimal` ima
 
 [source, bash]
 ----
-$ docker run registry.access.redhat.com/ubi8/ubi-minimal:8.3 cat /etc/redhat-release
+$ docker run registry.access.redhat.com/ubi8/ubi-minimal:8.5 cat /etc/redhat-release
 ----
 
 If you don't specify a tag then `latest` is used.
@@ -219,7 +228,7 @@ FROM registry.access.redhat.com/ubi8/ubi-minimal:8.5
 # In this case, install java and jbang:
 # Notice how we chain commands to avoid creating multiple intermediate layers
 RUN microdnf install java-11-openjdk-devel unzip  \
-  && curl -Ls "https://github.com/jbangdev/jbang/releases/download/v0.86.0/jbang-0.86.0.zip" --output jbang.zip \
+  && curl -Ls "https://github.com/jbangdev/jbang/releases/download/v0.97.0/jbang-0.97.0.zip" --output jbang.zip \
   && unzip jbang.zip && rm jbang.zip && mv jbang-* jbang && chmod +x jbang/bin/jbang
 
 COPY HelloWorld.java /root
@@ -255,6 +264,7 @@ $ docker run hello-world:1.0
 
 1. Skim the documentation for the https://docs.docker.com/engine/reference/builder/[Dockerfile format]
 2. Try to package a Java application packaged as a _fat jar_ in a container.
+3. Install `dive` (https://github.com/wagoodman/dive/releases/tag/v0.10.0) and inspect the structure of the container image.
 
 === Takeaways
 
@@ -275,7 +285,6 @@ Now that you've created an image, it's time to share it with other people.
 === Uploading Docker Hub
 
 First, sign up for a https://hub.docker.com/[Docker Hub account] or https://quay.io[Quay.io].
-
 
 In the last section, you tagged your image as `hello-world:1.0`.
 Most images in a registry come with a prefix: the name of the user or organization that created them. 
@@ -335,3 +344,73 @@ NOTE: Remember: even though many are called a "Container Registry", they store *
 * You can upload images to a registry, allowing you to share images with others.
 * Your organization will need a registry for its own images.
 * Kubernetes provides its own internal registry, but it may not be reachable
+
+=== ARM, x86 and Multi-Archs
+
+In general, containers are using the Linux x86 architecture.
+But with the rise of ARM devices (like the Apple M1 / M2), we start seeing inconsistencies.
+
+NOTE: ARM architecture is more efficient in terms of energy consumption pushing major Cloud providers to provide ARM support.
+
+Try run the following images:
+
+[source, bash]
+----
+$ docker run -it --entrypoint=bash quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-arm64
+$ docker run -it --entrypoint=bash quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-amd64
+----
+
+What can you observe?
+
+Containers are architecture-specific.
+You cannot run a x86 container on an ARM machine without an emulation layer.
+The emulation layer, when available, introduces significant latency.
+
+A multi-arch image is an image that can support multiple architectures.
+It looks like a single image with a single tag, but it is a list of images targeting multiple architectures organized by a manifest list.
+Multi-arch images are compatible with the Docker Image Manifest V2 Scheme 2 or OCI Image Index Specifications.
+When you pull a multi-arch images, it selects the one matching your platform architecture.
+
+Run:
+
+[source, bash]
+----
+$ docker run -it --entrypoint=bash quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17
+----
+
+It automatically picks the image for your architecture.
+
+Look at the manifest using:
+
+[source, bash]
+----
+$ docker manifest inspect quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17
+----
+
+You can see that this manifest provides images for amd64 and arm64.
+
+Create a manifest using:
+
+[source, bash]
+----
+$ docker manifest create cescoffier/my-manifest:1.0
+$ docker manifest annotate cescoffier/my-manifest:1.0 quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-amd64 --arch amd64
+$ docker manifest annotate cescoffier/my-manifest:1.0 quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-arm64 --arch arm64
+----
+
+NOTE: if you use podman, replace `annotate` with `add`
+
+IMPORTANT: the listed images must be already available on a registry.
+
+Then, inspect the created manifest.
+
+Push you manifest using the following command:
+
+[source, bash]
+----
+# Docker:
+$ docker manifest push <username>/my-manifest:1.0
+# Podman:
+$ docker manifest push <username>/my-manifest:1.0 docker://<username>/my-manifest:1.0
+----
+

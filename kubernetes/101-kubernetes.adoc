@@ -14,6 +14,8 @@ The single-node cluster runs in a virtual machine right on your computer, runnin
 
 Follows the instructions from https://minikube.sigs.k8s.io/docs/start/[the Minikube starting guide] to install Minikube on your machine.
 
+Alternatively you can use Rancher Desktop.
+
 === Starting Minikube 
 
 On your computer, run the following command to start the Minikube.
@@ -45,8 +47,8 @@ Type `kubectl cluster-info` into the command line.
 [source, bash]
 ----
 $ kubectl cluster-info
-Kubernetes control plane is running at https://127.0.0.1:50372
-CoreDNS is running at https://127.0.0.1:50372/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Kubernetes control plane is running at https://127.0.0.1:44721
+CoreDNS is running at https://127.0.0.1:44721/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 ----
 
 The `kubectl cluster-info` command is excellent for querying available endpoints of any Kubernetes cluster, which can be numerous on a more advanced cluster.
