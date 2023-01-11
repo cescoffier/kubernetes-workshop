@@ -393,9 +393,12 @@ Create a manifest using:
 
 [source, bash]
 ----
-$ docker manifest create cescoffier/my-manifest:1.0
-$ docker manifest annotate cescoffier/my-manifest:1.0 quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-amd64 --arch amd64
-$ docker manifest annotate cescoffier/my-manifest:1.0 quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-arm64 --arch arm64
+$ docker manifest create quay.io/cescoffier/my-manifest:1.0 \
+    quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-arm64 \
+    quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-amd64
+$ docker manifest annotate quay.io/cescoffier/my-manifest:1.0 quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-amd64 --arch amd64
+$ docker manifest annotate quay.io/cescoffier/my-manifest:1.0 quay.io/quarkus/ubi-quarkus-graalvmce-builder-image:22.1.0-java17-arm64 --arch arm64
+$  docker manifest inspect quay.io/cescoffier/my-manifest:1.0
 ----
 
 NOTE: if you use podman, replace `annotate` with `add`
